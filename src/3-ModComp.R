@@ -37,6 +37,11 @@ acc <- acc |>
     )
   )
 
+# For the lollipop plot, comparing only the indirect model seems more appropriate
+# and less redundant considering the other plots created
+accIS <- acc |>
+  filter(model != "Emerg")
+
 # Number of CV repetitions per (model + approach) combination
 nRep <- length(unique(acc$CV_rep))
 
@@ -100,15 +105,36 @@ ggplot(IS_models, aes(x = factor(model, levels = c("ColeoIS", "MesoIS", "MT_IS",
   scale_y_continuous(breaks = scales::pretty_breaks(n = 10))
 
 #--------------------------------------------------------------------#
-
 # Heatmap (5 x 3 grid comparing PAs across models and approaches)
-summary_acc <- acc |>
+
+acc_names <- acc |>
+  mutate(
+    approach = fct_recode(
+      approach,
+      "GBLUP" = "GBLUP",
+      "Bayesian GBLUP" = "B_GBLUP",
+      "Bayesian Gaussian Kernel" = "B_Gauss")
+  ) 
+
+# Renaming model names for the same reason
+acc_names <- acc_names |>
+  mutate(
+    model = fct_recode(
+      model,
+      "ML" = "MesoIS",
+      "CL" = "ColeoIS",
+      "ML+CL" = "MT_IS",
+      "Index" = "Idx",
+      "Emergence" = "Emerg")
+  )
+
+summary_acc <- acc_names |>
   group_by(model, approach) |>
   summarise(mean_acc = mean(accuracy), se = sd(accuracy)/sqrt(nRep), 
             .groups = "drop")
 
 ggplot(summary_acc, aes(x = approach, 
-                        y = factor(model, levels = c("ColeoIS", "MesoIS", "MT_IS", "Idx", "Emerg")), 
+                        y = factor(model, levels = c("CL", "ML", "ML+CL", "Index", "Emergence")), 
                         fill = mean_acc)) +
   geom_tile() +
   geom_text(aes(label = round(mean_acc, 3)), color = "white") +
@@ -126,11 +152,35 @@ acc_perc <- acc |>
   filter(model != "Emerg") |>
   mutate(perc_acc = accuracy/Field_acc*100)
 
-# Summarizing for plotting
+# Labels for facet wraps
+custom_labels <- as_labeller(c(
+  "B_Gauss" = "Bayesian Gaussian Kernel",
+  "B_GBLUP" = "Bayesian GBLUP",
+  "GBLUP" = "GBLUP"
+))
+
+# Summarizing for plotting (mean over 10 CV repetitions)
 perc_summary <- acc_perc |>
   group_by(model, approach) |>
   summarise(mean_perc = mean(perc_acc), se = sd(perc_acc)/sqrt(nRep), 
             .groups = "drop")
+
+# Let's do the same as above, but just for emergence (hence grouping by approach only)
+# We want the mean PA (over all CV reps) for direct genomic prediction with field emergence, 
+# to insert as a reference in each facet panel
+emerg_summary <- acc |>
+  filter(model == "Emerg") |>
+  group_by(approach) |>
+  summarise(mean_emerg = mean(accuracy), .groups = "drop")
+
+# Reference data frame so mean emergence labels can be added to each facet
+ref <- data.frame(
+  # Mean emergence as a "label" for each approach
+  approach = emerg_summary$approach,
+  label = round(emerg_summary$mean_emerg, 3),
+  model     = "MesoIS",   # which model bar to anchor near
+  mean_perc     = 95     # y-axis coordinate (largest % is around 88%)
+)
 
 ggplot(perc_summary, aes(x = factor(model, levels =  c("ColeoIS", "MesoIS", "MT_IS", "Idx")), 
                           y = mean_perc,
@@ -139,8 +189,24 @@ ggplot(perc_summary, aes(x = factor(model, levels =  c("ColeoIS", "MesoIS", "MT_
   geom_hline(yintercept = 0, linetype = "dashed", color = "black", linewidth = 0.6) +
   geom_col() +
   geom_errorbar(aes(ymin = mean_perc - se, ymax = mean_perc + se), width = 0.2) +
-  facet_wrap(~approach) +
-  scale_fill_manual(values = okabe_ito, name = "Model type") +
+  # Mean emergence label
+  geom_label(
+    data    = ref,
+    aes(x = model, y = mean_perc, label = label),
+    hjust   = 0.5,          # left-align the box
+    vjust   = 0.5,
+    fill    = "white",    # white background
+    colour  = "black",
+    size    = 6,
+    label.padding = unit(0.3, "lines"),
+    label.r       = unit(0.15, "lines"),  # slight rounding
+    inherit.aes   = FALSE
+  ) +
+  facet_wrap(~approach, labeller = custom_labels) +
+  ylim(0, 100) +
+  scale_fill_manual(values = okabe_ito, name = "Model",
+                    labels = c("Coleoptile length (CL)", "Mesocotyl length (ML)", "ML+CL", 
+                               "Index")) +
   labs(x = NULL, y = "Baseline PA %") +
   theme_minimal(base_size = 12) +
   theme(
@@ -157,12 +223,34 @@ ggplot(perc_summary, aes(x = factor(model, levels =  c("ColeoIS", "MesoIS", "MT_
 #------------------------------------------------------------------------#
 # 15-model ranking - lollipop plot
 
+# Only IS models now
 # In order to assess whether the models differ significantly from each other, 
 # we can employ an analysis of variance (ANOVA), using the CV repetition
 # as a grouping factor (specified as a stratum via the Error(.) term), and
 # model and approach as factors that may interact
 
-modAOV <- aov(accuracy ~ model*approach + CV_rep, acc)
+# Renaming approaches/frameworks to improve plot's readability
+accIS <- accIS |>
+  mutate(
+    approach = fct_recode(
+      approach,
+      "1" = "GBLUP",
+      "2" = "B_GBLUP",
+      "3" = "B_Gauss")
+  ) 
+
+# Renaming model names for the same reason
+accIS <- accIS |>
+  mutate(
+    model = fct_recode(
+      model,
+      "ML" = "MesoIS",
+      "CL" = "ColeoIS",
+      "ML+CL" = "MT_IS",
+      "Index" = "Idx")
+  )
+
+modAOV <- aov(accuracy ~ model*approach + CV_rep, accIS)
 # summary(modAOV)
 
 # The interaction term is significant, implying that the model + approach
@@ -176,15 +264,16 @@ modAOV <- aov(accuracy ~ model*approach + CV_rep, acc)
 # Adding CLD (Compact Letter Display) to the lollipop plot:
 tukey_pvals <- tukeyMod$model[, "p adj"]
 
+
 # Single column in the original acc dataset combining model and approach
 # with ":" as a separator to ensure compatibility with lettersComp (via y_pos)
-acc <- acc |>
+accIS <- accIS |>
   mutate(mod_app = as.factor(paste(model, approach, sep = ":")))
 
 # To ensure the letters are ordered in the plot according to predictive ability
 lettersComp <- multcompLetters2(accuracy ~ mod_app,
                                tukey_pvals,
-                               data = acc,
+                               data = accIS,
                                reversed = FALSE)
 
 
@@ -197,7 +286,7 @@ letterDF <- data.frame(
 rownames(letterDF) = NULL
 
 # Data frame with mean accuracy values for each model + approach
-rank_summary <- acc |>
+rank_summary <- accIS |>
   # Redundant simply because we want to keep all columns
   group_by(model, approach, mod_app) |>
   summarise(mean_acc = mean(accuracy), se = sd(accuracy)/sqrt(nRep), 
@@ -217,15 +306,18 @@ levels_mod_app <- levels(reorder(rank_summary$mod_app, rank_summary$mean_acc))
   
 ggplot(rank_summary, aes(x = mean_acc, y = factor(mod_app, levels = levels_mod_app), 
                                                   color = approach)) +
-  geom_segment(aes(x = 0.4, xend = mean_acc, y = mod_app, yend = mod_app), 
+  geom_segment(aes(x = 0, xend = mean_acc, y = mod_app, yend = mod_app), 
                linewidth = 0.6) +
   geom_point(size = 3.5) +
   geom_errorbarh(aes(xmin = mean_acc - se, xmax = mean_acc + se), height = 0.2) +
   geom_text(aes(x = mean_acc + se + 0.01, label = letter), hjust = 0, size = 3.2,
             show.legend = FALSE) +
+  geom_vline(xintercept = 0.655, color = "red", linetype = "dashed", linewidth = 1.2) +
   scale_color_manual(values = c("#1b9e77", "#d95f02","#7570b3"),
-                     name = "Approach") +
-  labs(x = "Predictive ability", y = NULL) +
+                     labels = c("Bayesian Gaussian Kernel (3)", "Bayesian GBLUP (2)", 
+                                "GBLUP (1)"),
+                     name = "Framework") +
+  labs(x = "Predictive ability", y = "Model") +
   theme_minimal(base_size = 12) +
   theme(panel.grid.major.y = element_blank())
 

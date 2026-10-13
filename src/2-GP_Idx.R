@@ -154,7 +154,7 @@ load(file = here("output", "valFolds.RData"))
 # with the selected index
 accIdx <- cv2stageST_IS(IdxDF, adjFieldEmerg, G, valFolds)
 
-accGP_Reml["accIdx"] <- accIdx
+accGP_Reml[["accIdx"]] <- accIdx
 
 # For the kernel approaches, we will not use weights
 IdxDF <- IdxDF |>
@@ -163,12 +163,12 @@ IdxDF <- IdxDF |>
 accIdxLK_ST_IS <- cv2stgBGLR_ST_IS(IdxDF, adjFieldEmerg, G, valFolds,
                                      nIt = 10000, brnIn = 2000)
 
-accGP_LK["accIdx_LK"] <- accIdxLK_ST_IS
+accGP_LK[["accIdx_LK"]] <- accIdxLK_ST_IS
 
 accIdxGK_ST_IS <- cv2stgBGLRGauss_ST_IS(IdxDF, adjFieldEmerg, G, valFolds,
                                         nIt = 10000, brnIn = 2000)
 
-accGP_GK["accIdx_GK"] <- accIdxGK_ST_IS
+accGP_GK[["accIdx_GK"]] <- accIdxGK_ST_IS
 
 # Saving accuracy lists with the new index elements
 save(accGP_Reml, file = here("output", "accGP_Reml.RData"))

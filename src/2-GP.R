@@ -4,6 +4,7 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(asremlPlus)
+library(BGLR)
 
 
 # Loading functions from the functions folder
@@ -21,58 +22,60 @@ set.seed(199927)
 load(here("output", "G.RData"))
 
 # Ragdoll experiment
-load(here("data", "expRagdoll.RData"))
-
-# Field experiment
-load(here("data", "expField.RData"))
-
-# Filtering field data for only "Deep" (> 8 cm) treatment
-expFieldDeep <- expField |> filter(depth == "Deep")
-
-###############################################################
-##                Adjusted means (first stage)               ##
-###############################################################
-
-# Here genotype is a fixed effect since we are interested in each genotype's
-# individual effect
-# Note: Sandeep claimed spacial correction didn't influence the results 
-# significantly, hence we can skip that
-
-#################### Field adjusted means ######################
-
-# Our only trait of interest in the field experiment is % emergence
-
-# Mixed model assuming block has no effect (the genotypes are not carried from
-# one block to another within a single replication, so estimating block effect
-# is meaningless)
-
-adjFieldEmerg <- adjMeans(expFieldDeep, "emergence", blck = "block")
-# save(adjFieldEmerg, file = here("output", "adjFieldEmerg.RData"))
-
-##################### Ragdoll adjusted means ##################
+# load(here("data", "expRagdoll.RData"))
+# 
+# # Field experiment
+# load(here("data", "expField.RData"))
+# 
+# # Filtering field data for only "Deep" (> 8 cm) treatment
+# expFieldDeep <- expField |> filter(depth == "Deep")
+# 
+# ###############################################################
+# ##                Adjusted means (first stage)               ##
+# ###############################################################
+# 
+# # Here genotype is a fixed effect since we are interested in each genotype's
+# # individual effect
+# # Note: Sandeep claimed spacial correction didn't influence the results 
+# # significantly, hence we can skip that
+# 
+# #################### Field adjusted means ######################
+# 
+# # Our only trait of interest in the field experiment is % emergence
+# 
+# # Mixed model assuming block has no effect (the genotypes are not carried from
+# # one block to another within a single replication, so estimating block effect
+# # is meaningless)
+# 
+# adjFieldEmerg <- adjMeans(expFieldDeep, "emergence", blck = "block")
+# # save(adjFieldEmerg, file = here("output", "adjFieldEmerg.RData"))
+# 
+# ##################### Ragdoll adjusted means ##################
 
 # Our two traits of interest are mesocotyl and coleoptile length
 # Same procedure as for % emergence in the field experiment
 
-adjRagdollMeso <- adjMeans(expRagdoll, "mesocotyl")
-# save(adjRagdollMeso, file = here("output", "adjRagdollMeso.RData"))
-
-adjRagdollColeo <- adjMeans(expRagdoll, "coleoptile")
-# save(adjRagdollColeo, file = here("output", "adjRagdollColeo.RData"))
-
-# For the sake of building an index combining all responses
-# collected in the ragdoll experiment, we will also obtain
-# adjusted means for root length and shoot length
-
-adjRagdollRoot <- adjMeans(expRagdoll, "rootlength")
-# save(adjRagdollRoot, file = here("output", "adjRagdollRoot.RData"))
-
-adjRagdollShoot <- adjMeans(expRagdoll, "shootlength")
+# adjRagdollMeso <- adjMeans(expRagdoll, "mesocotyl")
+# # save(adjRagdollMeso, file = here("output", "adjRagdollMeso.RData"))
+# 
+# adjRagdollColeo <- adjMeans(expRagdoll, "coleoptile")
+# # save(adjRagdollColeo, file = here("output", "adjRagdollColeo.RData"))
+# 
+# # For the sake of building an index combining all responses
+# # collected in the ragdoll experiment, we will also obtain
+# # adjusted means for root length and shoot length
+# 
+# adjRagdollRoot <- adjMeans(expRagdoll, "rootlength")
+# # save(adjRagdollRoot, file = here("output", "adjRagdollRoot.RData"))
+# 
+# adjRagdollShoot <- adjMeans(expRagdoll, "shootlength")
 # save(adjRagdollShoot, file = here("output", "adjRagdollShoot.RData"))
 
 ###############################################################
 ##                     GBLUP (second stage)                  ##
 ###############################################################
+
+# Most of the above code needed to be run only once, so it was commented away #
 
 ### Checking genetic variance structure:
 # sum(diag(G))/nrow(G)
@@ -100,7 +103,13 @@ lapply(list.files(path = here("output"),
        load, .GlobalEnv)
 
 # Loading folds list for repeated (10 times) 5-fold CV
-load(file = here("output", "valFolds.RData"))
+# load(file = here("output", "valFolds.RData"))
+
+# 30-time repetition for more robustness
+#load(file = here("output", "valFolds30.RData"))
+
+# 20 repetitions...
+load(file = here("output", "valFolds20.RData"))
 
 # List to store accuracy values for Reml
 accGP_Reml <- list()
@@ -124,37 +133,37 @@ accGP_GK <- list()
 
 accField <- cv2stageST(adjFieldEmerg, G, valFolds)
 
-accGP_Reml["accField"] <- accField
+accGP_Reml[["accField"]] <- accField
 
 accFieldLK <- cv2stgBGLR_ST(adjFieldEmerg, G, valFolds, nIt = 10000, 
                             brnIn = 2000)
 
-accGP_LK["accFieldLK"] <- accFieldLK
+accGP_LK[["accFieldLK"]] <- accFieldLK
 
 accFieldGK <- cv2stgBGLRGauss_ST(adjFieldEmerg, G, valFolds, 
                                         nIt = 10000, brnIn = 2000)
 
-accGP_GK["accFieldGK"] <- accFieldGK
+accGP_GK[["accFieldGK"]] <- accFieldGK
 
 #------------ Ragdoll mesocotyl (indirect selection - IS) -----#
 
 accMesoIS <- cv2stageST_IS(adjRagdollMeso, adjFieldEmerg, G, 
                            valFolds)
 
-accGP_Reml["accMesoIS"] <- accMesoIS
+accGP_Reml[["accMesoIS"]] <- accMesoIS
 
 accMesoLK_IS <- cv2stgBGLR_ST_IS(adjRagdollMeso,
                                       adjFieldEmerg, G, valFolds, nIt = 10000,
                                       brnIn = 2000)
 
-accGP_LK["accMesoLK"] <- accMesoLK_IS
+accGP_LK[["accMesoLK"]] <- accMesoLK_IS
 
 
 accMesoGK_IS <- cv2stgBGLRGauss_ST_IS(adjRagdollMeso,
                                                 adjFieldEmerg, G, valFolds, nIt = 10000,
                                                 brnIn = 2000)
 
-accGP_GK["accMesoGK"] <- accMesoGK_IS
+accGP_GK[["accMesoGK"]] <- accMesoGK_IS
 
 
 # To evaluate the prediction accuracy for the indirect selection approach,
@@ -168,19 +177,19 @@ accGP_GK["accMesoGK"] <- accMesoGK_IS
 accColeoIS <- cv2stageST_IS(adjRagdollColeo, adjFieldEmerg, G, 
                             valFolds)
 
-accGP_Reml["accColeoIS"] <- accColeoIS
+accGP_Reml[["accColeoIS"]] <- accColeoIS
 
 accColeoLK_IS <- cv2stgBGLR_ST_IS(adjRagdollColeo,
                                        adjFieldEmerg, G, valFolds, nIt = 10000,
                                        brnIn = 2000)
 
-accGP_LK["accColeoLK"] <- accColeoLK_IS
+accGP_LK[["accColeoLK"]] <- accColeoLK_IS
 
 accColeoGK_IS <- cv2stgBGLRGauss_ST_IS(adjRagdollColeo,
                                                  adjFieldEmerg, G, valFolds, nIt = 10000,
                                                  brnIn = 2000)
 
-accGP_GK["accColeoGK"] <- accColeoGK_IS
+accGP_GK[["accColeoGK"]] <- accColeoGK_IS
 
 ######################### Multi-trait GP ############################
 
@@ -199,7 +208,7 @@ accGP_GK["accColeoGK"] <- accColeoGK_IS
 accIS_ML_CL <- cv2stageMT_IS(adjRagdollMeso, adjRagdollColeo,
                           adjFieldEmerg, G, valFolds)
 
-accGP_Reml["accMT_IS"] <- accIS_ML_CL
+accGP_Reml[["accMT_IS"]] <- accIS_ML_CL
 
 # A bit of pre-processing for the kernel models
 MT_DF <- merge(adjRagdollMeso |> select(genotype, RagMeso = BLUE),
@@ -211,13 +220,13 @@ accLK_MT_IS <- cv2stgBGLR_MT_IS(MT_DF, adjFieldEmerg,
                                   G, valFolds, nIt = 10000, 
                                   brnIn = 2000)
 
-accGP_LK["accMT_LK"] <- accLK_MT_IS
+accGP_LK[["accMT_LK"]] <- accLK_MT_IS
 
 accGK_MT_IS <- cv2stgBGLRGauss_MT_IS(MT_DF, adjFieldEmerg, 
                                             G, valFolds, nIt = 10000, 
                                             brnIn = 2000)
 
-accGP_GK["accMT_GK"] <- accGK_MT_IS
+accGP_GK[["accMT_GK"]] <- accGK_MT_IS
 
 # Saving accuracy lists
 save(accGP_Reml, file = here("output", "accGP_Reml.RData"))
