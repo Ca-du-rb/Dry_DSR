@@ -2,6 +2,7 @@ library(here)
 library(tidyverse)
 library(ggpubr)
 library(multcompView)
+library(gt)
 
 # Load accuracy lists
 load(file = here("output", "accGP_Reml.RData"))
@@ -103,43 +104,6 @@ ggplot(IS_models, aes(x = factor(model, levels = c("ColeoIS", "MesoIS", "MT_IS",
     ) +
   scale_fill_manual(values = okabe_ito, name = "Model type") +
   scale_y_continuous(breaks = scales::pretty_breaks(n = 10))
-
-#--------------------------------------------------------------------#
-# Heatmap (5 x 3 grid comparing PAs across models and approaches)
-
-acc_names <- acc |>
-  mutate(
-    approach = fct_recode(
-      approach,
-      "GBLUP" = "GBLUP",
-      "Bayesian GBLUP" = "B_GBLUP",
-      "Bayesian Gaussian Kernel" = "B_Gauss")
-  ) 
-
-# Renaming model names for the same reason
-acc_names <- acc_names |>
-  mutate(
-    model = fct_recode(
-      model,
-      "ML" = "MesoIS",
-      "CL" = "ColeoIS",
-      "ML+CL" = "MT_IS",
-      "Index" = "Idx",
-      "Emergence" = "Emerg")
-  )
-
-summary_acc <- acc_names |>
-  group_by(model, approach) |>
-  summarise(mean_acc = mean(accuracy), se = sd(accuracy)/sqrt(nRep), 
-            .groups = "drop")
-
-ggplot(summary_acc, aes(x = approach, 
-                        y = factor(model, levels = c("CL", "ML", "ML+CL", "Index", "Emergence")), 
-                        fill = mean_acc)) +
-  geom_tile() +
-  geom_text(aes(label = round(mean_acc, 3)), color = "white") +
-  scale_fill_viridis_c() +
-  labs(x = "Approach", y = "Model", fill = "Mean Predictive Ability")
 
 #--------------------------------------------------------------------------#
 # Percentage plot comparing each approach's IS models to their respective
@@ -321,3 +285,54 @@ ggplot(rank_summary, aes(x = mean_acc, y = factor(mod_app, levels = levels_mod_a
   theme_minimal(base_size = 12) +
   theme(panel.grid.major.y = element_blank())
 
+#--------------------------------------------------------------#
+
+# Table alternative to heatmap (better presentation)
+
+approach_order <- c(
+  "GBLUP",
+  "Bayesian GBLUP",
+  "Bayesian Gaussian Kernel"
+)
+
+model_order <- c("CL", "ML", "ML+CL", "Index", "Emergence")
+
+summary_acc <- acc |>
+  mutate(
+    approach = fct_recode(
+      approach,
+      "GBLUP" = "GBLUP",
+      "Bayesian GBLUP" = "B_GBLUP",
+      "Bayesian Gaussian Kernel" = "B_Gauss"
+    ),
+    model = fct_recode(
+      model,
+      "ML" = "MesoIS",
+      "CL" = "ColeoIS",
+      "ML+CL" = "MT_IS",
+      "Index" = "Idx",
+      "Emergence" = "Emerg"
+    )
+  ) |>
+  group_by(model, approach) |>
+  summarise(
+    mean_acc = mean(accuracy, na.rm = TRUE),
+    se = sd(accuracy, na.rm = TRUE) / sqrt(nRep),
+    .groups = "drop"
+  )
+
+table_acc <- summary_acc |>
+  mutate(
+    model = factor(model, levels = model_order),
+    approach = factor(approach, levels = approach_order),
+    result = sprintf("%.3f (SE %.3f)", mean_acc, se)
+  ) |>
+  select(model, approach, result) |>
+  pivot_wider(names_from = approach, values_from = result) |>
+  arrange(model) |>
+  mutate(model = as.character(model))
+
+table_acc |>
+  gt() |>
+  cols_label(model = "Model") |>
+  tab_header(title = "Mean Predictive Ability by Model and Approach")
